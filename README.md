@@ -1,100 +1,212 @@
-🚀 Cloudflare Worker Auto-Deployment Guide
-GitHub Actions · Zero-Timeout · Multi-Domain Ready
+☁️ Panduan Deployment Cloudflare Worker
 
-Dokumen ini menjelaskan dua metode deployment Cloudflare Worker yang dapat Anda gunakan langsung di GitHub Actions.
-Disusun ulang dengan gaya berbeda, lebih profesional, dan tetap mudah dipahami.
+Automated · Scalable · Anti-Timeout 🚀
 
-⭐ Apa yang Bisa Dilakukan Panduan Ini?
+Dokumen ini adalah panduan lengkap untuk melakukan deployment Cloudflare Worker menggunakan GitHub Actions.
+Tersedia dua strategi deployment—pilih sesuai kebutuhan dan skala proyek Anda!
 
-Deploy Worker ke Cloudflare otomatis
+🎯 Tujuan Utama
 
-Mendaftarkan route domain & subdomain tanpa ribet
+Mengotomatisasi:
 
-Menghindari error 504 API Timeout
+Pembuatan rute domain
 
-Mendukung ratusan domain melalui sharding
+Deployment Cloudflare Worker
 
-⚠️ Masalah Umum: Cloudflare Timeout 504
+Penanganan skala besar tanpa risiko API Timeout (504)
 
-Saat Worker memiliki terlalu banyak rute dalam satu deploy, Cloudflare API tidak mampu memproses semua sekaligus → muncul timeout.
+🤯 Kendala Umum: Cloudflare API Timeout (504)
 
-Untuk itu tersedia dua pendekatan, masing-masing dibuat untuk kondisi berbeda.
+Saat Worker memiliki banyak rute (domain + subdomain), Cloudflare API sering gagal memproses semua rute sekaligus → menyebabkan timeout.
 
-🔍 Perbandingan Dua Pendekatan
-Metode	Karakteristik	Cocok Untuk
-1. Legacy – Single Worker	Semua rute digabung ke satu Worker	Proyek kecil, <50 rute
-2. Sharded – Multi Worker	Setiap domain dibuatkan Worker unik	Proyek besar, ratusan domain
-📦 Struktur File Wajib dalam Repository
-File	Keterangan	Dipakai Pada
-worker.js	Script Cloudflare Worker	Semua metode
-customdomain.txt	Daftar prefix subdomain	Semua metode
-main_domains.txt	Daftar domain	Khusus metode shard
-[Deploy Injektor].yml	Workflow metode Legacy	Legacy
-deploy_chunked.yml	Workflow metode Sharded	Sharding
-🧰 Metode 1: Legacy Deployment (Single Worker)
+Solusinya? Kita punya dua pendekatan:
 
-Workflow: [Deploy Injektor].yml
+🧩 Perbandingan Strategi
+Strategi	Deskripsi	Kapan Digunakan
+A. Single Worker (Legacy)	Semua rute masuk ke satu Worker 💥	Rute sangat sedikit (<50). Risiko timeout cukup tinggi.
+B. Multi-Domain Chunking	Worker dideploy ke banyak domain menggunakan chunk ✨	Direkomendasikan! Skalabilitas tinggi dan aman dari timeout.
+🛠️ File Wajib di Repository
+File	Deskripsi	Digunakan oleh
+worker.js	Script Cloudflare Worker	A & B
+domains/list.txt	Daftar domain	B
+.github/workflows/main.yml	Single Worker Deployment	A
+.github/workflows/multi.yml	Multi-Domain Deployment	B
+⚙️ Strategi A — Single Worker Deployment
 
-Pendekatan ini memakai 1 Worker untuk seluruh domain & subdomain.
+File: main.yml
 
-✔️ Yang Perlu Disiapkan
+Workflow untuk mendeploy 1 Worker → 1 Domain.
 
-worker_name
+📝 Input yang Dibutuhkan
 
-main_domain
+script_name (misal worker.js)
 
-cloudflare_account_id
+route_pattern (misal example.com/*)
 
 cloudflare_api_token
 
-🔁 Cara Kerja
-
-Workflow membaca domain utama.
-
-Semua prefix diambil dari customdomain.txt.
-
-Worker menghasilkan satu daftar rute besar.
-
-Deploy dilakukan satu kali.
-
-Catatan: Jika jumlah rute banyak, kemungkinan besar akan timeout.
-
-🧩 Metode 2: Multi-Worker Sharding (Highly Recommended)
-
-Workflow: deploy_chunked.yml
-
-Setiap domain akan diproses sebagai Worker terpisah → tidak ada rute panjang → no timeout.
-
-✔️ Yang Perlu Disiapkan
-
-Hanya dua input:
-
 cloudflare_account_id
+
+cloudflare_zone_id
+
+📄 File: main.yml
+name: Deploy Injektor
+
+on:
+  workflow_dispatch:
+    inputs:
+      script_name:
+        description: "Nama file script (misal: worker.js)"
+        required: true
+      route_pattern:
+        description: "Pattern route (misal: example.com/*)"
+        required: true
+      cloudflare_api_token:
+        description: "Cloudflare API Token"
+        required: true
+      cloudflare_account_id:
+        description: "Cloudflare Account ID"
+        required: true
+      cloudflare_zone_id:
+        description: "Cloudflare Zone ID"
+        required: true
+
+jobs:
+  deploy:
+    name: Deploy Worker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Upload Worker ke Cloudflare
+        run: |
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ inputs.cloudflare_account_id }}/workers/scripts/${{ inputs.script_name }}" \
+            -H "Authorization: Bearer ${{ inputs.cloudflare_api_token }}" \
+            -H "Content-Type: application/javascript" \
+            --data-binary @"${{ inputs.script_name }}"
+
+      - name: Tambah Route
+        run: |
+          curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ inputs.cloudflare_zone_id }}/workers/routes" \
+            -H "Authorization: Bearer ${{ inputs.cloudflare_api_token }}" \
+            -H "Content-Type: application/json" \
+            --data "{
+              \"pattern\": \"${{ inputs.route_pattern }}\",
+              \"script\": \"${{ inputs.script_name }}\"
+            }"
+
+🚀 Strategi B — Multi-Domain Chunking
+
+File: multi.yml
+
+Deployment otomatis ke banyak domain tanpa risiko timeout dengan membagi domain menjadi beberapa chunk.
+
+📝 Input yang Dibutuhkan
+
+script_name
 
 cloudflare_api_token
 
-🤖 Bagaimana Workflow Ini Bekerja?
-Tahap	Proses	Tujuan
-1. Loader	Membaca semua domain di main_domains.txt	Menentukan jumlah Worker
-2. Generator	Membuat Worker baru per domain	Tidak ada beban berlebih
-3. Route Builder	Prefix dari customdomain.txt digabung otomatis	Setup massal
-4. Deploy Serial	Deploy domain satu-per-satu	Mencegah konflik
-5. Cooldown	sleep 20 detik antar deploy	Anti-504 Timeout
+cloudflare_account_id
 
-Dengan metode sharding, deploy 100–500 domain pun tetap stabil.
+chunk_size (default 20 domain per chunk)
 
-▶️ Cara Menjalankan Workflow
+📄 Struktur Folder
+domains/
+  list.txt
 
-Buka menu Actions pada repository GitHub
+📄 File: multi.yml
+name: Deploy Chunked Multi-Domain Worker
 
-Pilih workflow:
+on:
+  workflow_dispatch:
+    inputs:
+      script_name:
+        description: "Nama file script (misal: worker.js)"
+        required: true
+      cloudflare_api_token:
+        description: "Cloudflare API Token"
+        required: true
+      cloudflare_account_id:
+        description: "Cloudflare Account ID"
+        required: true
+      chunk_size:
+        description: "Jumlah domain per chunk (default 20)"
+        required: false
+        default: "20"
 
-Legacy → [Deploy Injektor]
+jobs:
+  prepare:
+    name: Persiapan Chunking
+    runs-on: ubuntu-latest
 
-Sharded → Deploy Chunked Multi-Domain
+    outputs:
+      chunk_count: ${{ steps.chunk.outputs.count }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Buat Folder Chunk
+        run: mkdir chunks
+
+      - name: Chunking Domain
+        id: chunk
+        run: |
+          split -l ${{ inputs.chunk_size }} domains/list.txt chunks/domain_chunk_
+          COUNT=$(ls chunks | wc -l)
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+
+  deploy:
+    name: Deploy Setiap Chunk
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        chunk_id: ${{ range(0, needs.prepare.outputs.chunk_count) }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Deploy ke Cloudflare
+        run: |
+          CHUNK_FILE=$(ls chunks | sed -n "$(( ${{ matrix.chunk_id }} + 1 ))p")
+          echo "Processing chunk: $CHUNK_FILE"
+
+          while read DOMAIN; do
+            echo "Deploy to $DOMAIN"
+            curl -X POST "https://api.cloudflare.com/client/v4/accounts/${{ inputs.cloudflare_account_id }}/workers/scripts/${{ inputs.script_name }}/subdomain" \
+              -H "Authorization: Bearer ${{ inputs.cloudflare_api_token }}" \
+              -H "Content-Type: application/json" \
+              --data "{\"hostname\": \"$DOMAIN\"}"
+          done < "chunks/$CHUNK_FILE"
+
+      - name: Selesai
+        run: echo "Chunk ${{ matrix.chunk_id }} selesai dideploy"
+
+  finish:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Semua Deployment Selesai
+        run: echo "Semua deployment selesai."
+
+🏃 Cara Menjalankan Deployment
+
+Buka tab Actions di GitHub
+
+Pilih workflow sesuai kebutuhan:
+
+Deploy Injektor → Single domain
+
+Deploy Chunked Multi-Domain Worker → Multi-domain
 
 Klik Run workflow
 
-Isi kredensial Cloudflare
+Masukkan input yang diperlukan
 
-Jalankan → otomatis deploy 🎉
+Klik Run
+
+Selesai 🎉 Worker sukses dideploy!
