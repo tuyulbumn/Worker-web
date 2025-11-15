@@ -1,145 +1,102 @@
-☁️ Panduan Deployment Cloudflare Worker
+# ☁️ Panduan Deployment Cloudflare Worker  
+**Automated · Scalable · Anti-Timeout 🚀**
 
-Halo! Dokumen ini adalah panduan lengkap Anda untuk mendeploy Worker Cloudflare menggunakan GitHub Actions. Kami punya dua strategi, pilih yang paling cocok untuk skala proyek Anda!
+Dokumen ini adalah panduan lengkap untuk melakukan deployment Cloudflare Worker menggunakan GitHub Actions.  
+Tersedia **dua strategi deployment**—pilih sesuai kebutuhan dan skala proyek Anda!
 
-🎯 Tujuan Utama
+---
 
-Mengotomatisasi pembuatan rute domain dan deployment Worker.
+## 🎯 Tujuan Utama
+Mengotomatisasi:
 
-🤯 Tantangan Besar: API Timeout (Kesalahan 504)
+- Pembuatan rute domain  
+- Deployment Cloudflare Worker  
+- Penanganan skala besar tanpa risiko *API Timeout (504)*
 
-Saat Worker memiliki terlalu banyak rute (domain + sub-domain), API Cloudflare sering mengalami Timeout. Kami menawarkan dua solusi untuk masalah ini:
+---
 
-Strategi
+## 🤯 Kendala Umum: *Cloudflare API Timeout (504)*
+Saat Worker memiliki **banyak rute** (domain + subdomain), Cloudflare API sering gagal memproses semua rute sekaligus → menyebabkan *timeout*.
 
-Deskripsi
+Solusinya? Kita punya **dua pendekatan**:
 
-Kapan Menggunakan
+---
 
-A. Single Worker (Legacy)
+## 🧩 Perbandingan Strategi
 
-Semua rute ke SATU Worker 💥.
+| Strategi | Deskripsi | Kapan Digunakan |
+|---------|-----------|------------------|
+| **A. Single Worker (Legacy)** | Semua rute masuk ke **satu Worker** 💥 | Rute **sangat sedikit (<50)**. Risiko timeout cukup tinggi. |
+| **B. Multi-Worker Sharding** | **1 Domain = 1 Worker unik** ✨ | **Direkomendasikan!** Skalabilitas tinggi dan aman dari timeout. |
 
-Jika total rute Anda SANGAT SEDIKIT (kurang dari 50). Risiko timeout tinggi.
+---
 
-B. Multi-Worker Sharding
+## 🛠️ Persiapan File Wajib  
+Pastikan file berikut ada di **root** repo:
 
-1 Domain Utama = 1 Worker Unik (Terpisah) ✅.
+| File | Deskripsi | Untuk Strategi |
+|------|-----------|----------------|
+| `worker.js` | Kode utama Worker | A & B |
+| `customdomain.txt` | Daftar prefix subdomain (ex: `api`, `blog`) | A & B |
+| `main_domains.txt` | Daftar domain utama | B |
+| `deploy_chunked.yml` | Workflow sharding | B |
+| `[Deploy Injektor].yml` | Workflow legacy | A |
 
-DIREKOMENDASIKAN! Solusi stabil untuk mencegah timeout dan mengelola banyak domain.
+---
 
-🛠️ Persiapan File (Wajib)
+# ⚙️ Strategi A — **Single Worker (Legacy Deployment)**  
+**File:** `[Deploy Injektor].yml`
 
-Pastikan file-file ini ada di akar (root) repositori Anda:
+Pendekatan tradisional untuk proyek kecil tanpa banyak perkembangan domain.
 
-File
+### 📝 Input yang Dibutuhkan
+- `worker_name` → Nama Worker  
+- `main_domain` → Domain utama (ex: `nzr2805.my.id`)  
+- `cloudflare_account_id` / `cloudflare_api_token`
 
-Deskripsi
+### 🔄 Alur Kerja
+1. Workflow membaca `main_domain` + semua prefix dalam `customdomain.txt`  
+2. Semua rute digabung dalam **satu `wrangler.toml`**  
+3. Satu Worker dideploy dengan seluruh rute tersebut  
 
-Diperlukan untuk
+Cocok jika jumlah rute sangat terbatas.
 
-worker.js
+---
 
-Kode inti Worker Anda.
+# 🚀 Strategi B — **Multi-Worker Sharding (Highly Recommended!)**  
+**File:** `deploy_chunked.yml`
 
-A & B
+Solusi modern untuk menghindari timeout dan menangani banyak domain.
 
-customdomain.txt
+### 📝 Input yang Dibutuhkan
+Hanya kredensial:
 
-Daftar prefix sub-domain (contoh: api, blog).
+- `cloudflare_account_id`  
+- `cloudflare_api_token`
 
-A & B
+Tidak perlu memasukkan nama worker atau domain — **semuanya otomatis!**
 
-main_domains.txt
+### 🔮 Logika Otomatis
+| Langkah | Deskripsi | Tujuan |
+|--------|-----------|---------|
+| **1. Chunking** | Setiap domain di `main_domains.txt` dipecah menjadi 1 domain per proses | Mengurangi beban API |
+| **2. Penamaan Otomatis** | `blueivy.qzz.io` → Worker bernama `blueivy` | Worker unik per domain |
+| **3. Serial Deployment** | Deploy satu per satu, tidak paralel | Mencegah konflik API |
+| **4. Cooldown 20 detik** | `sleep 20` antar deployment | Hindari 504 Timeout |
 
-Daftar domain utama (hanya untuk Strategi B).
+Dengan strategi ini, Anda bisa mendeploy bahkan **ratusan domain** secara stabil.
 
-B
+---
 
-deploy_chunked.yml
+# 🏃 Cara Menjalankan Deployment
 
-Workflow untuk Strategi B (Sharding).
+1. Buka tab **Actions** di GitHub repo Anda  
+2. Pilih workflow:
+   - **[Deploy Injektor]** → Strategi A  
+   - **Deploy Chunked Multi-Domain Worker** → Strategi B  
+3. Klik **“Run workflow”**  
+4. Masukkan kredensial Cloudflare  
+5. Tekan **Run** → Deployment berjalan otomatis 🎉
 
-B
+---
 
-[Deploy Injektor].yml
-
-Workflow untuk Strategi A (Legacy).
-
-A
-
-⚙️ Detail Strategi A: Deployment Worker Tunggal
-
-(File: [Deploy Injektor].yml)
-
-Ini adalah cara tradisional, cocok untuk proyek kecil yang rutenya tidak akan bertambah.
-
-📝 Input yang Anda Masukkan:
-
-worker_name: Nama Worker.
-
-main_domain: Domain utama tunggal (misalnya, nzr2805.my.id).
-
-cloudflare_account_id / cloudflare_api_token: Kredensial akun.
-
-➡️ Proses:
-
-Workflow mengambil main_domain dari input dan semua prefix dari customdomain.txt.
-
-Semua rute digabung menjadi satu wrangler.toml.
-
-Satu Worker dideploy dengan semua rute.
-
-🚀 Detail Strategi B: Multi-Worker Sharding (The Pro Way) 
-
-(File: deploy_chunked.yml)
-
-Solusi terbaik untuk skalabilitas dan keandalan!
-
-📝 Input (Hanya Kredensial!):
-
-cloudflare_account_id / cloudflare_api_token: Kredensial akun.
-
-Input nama Worker dan domain utama Dihapus karena prosesnya otomatis.
-
-🛠️ Logika Otomatis yang Keren:
-
-Langkah
-
-Deskripsi
-
-Tujuannya
-
-1. Pembagian (Chunking)
-
-Membagi main_domains.txt menjadi 1 domain per bagian.
-
-Setiap panggilan API hanya memproses 1 domain, mengurangi beban.
-
-2. Penamaan Otomatis
-
-Worker diberi nama dari kata pertama domain. Contoh: blueivy.qzz.io $\to$ Worker blueivy.
-
-Worker unik untuk setiap domain.
-
-3. Deployment Serial
-
-Setiap Worker dideploy satu per satu.
-
-Memastikan tidak ada tabrakan API.
-
-4. Jeda Aman
-
-Ada jeda 20 detik (sleep 20) di antara setiap deployment.
-
-Memberi waktu pemulihan API Cloudflare untuk mencegah 504 Timeout.
-
-Dengan Strategi B, Anda bisa mendeploy ratusan domain dengan percaya diri!
-
-🏃 Cara Menjalankan
-
-Buka tab Actions di repo GitHub Anda.
-
-Pilih workflow yang ingin Anda jalankan ([Deploy Injektor] atau Deploy Chunked Multi-Domain Worker).
-
-Klik "Run workflow" dan isi kredensial yang diminta.
