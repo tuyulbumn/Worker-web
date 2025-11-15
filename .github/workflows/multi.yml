@@ -3,10 +3,6 @@ name: Deploy Chunked Multi-Domain Worker
 on:
   workflow_dispatch:
     inputs:
-      worker_name:
-        description: 'Nama Worker'
-        required: true
-        type: string
       cloudflare_account_id:
         description: 'Cloudflare Account ID'
         required: true
@@ -17,9 +13,9 @@ on:
         type: string
       # Input opsional untuk mengatur ukuran chunk
       chunk_size:
-        description: 'Jumlah Domain per deployment API Call (Default: 10)'
+        description: 'Jumlah Domain per deployment API Call (Default: 1)'
         required: false
-        default: '10' # Nilai default diubah dari 50 ke 10
+        default: '1' # Diatur ke 1 untuk memaksa 1 Domain Utama = 1 Worker per panggilan API
         type: string
 
 jobs:
@@ -44,7 +40,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare_api_token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare_account_id }}
           CHUNK_SIZE: ${{ inputs.chunk_size }}
-          WORKER_NAME: ${{ inputs.worker_name }}
         run: |
           echo "Memulai deployment bertahap (chunked deployment)."
 
@@ -54,19 +49,27 @@ jobs:
             exit 1
           fi
 
-          # 2. Bagi main_domains.txt menjadi chunk files (misalnya, 50 baris per file)
+          # 2. Bagi main_domains.txt menjadi chunk files (dengan 1 baris per file)
           split -l $CHUNK_SIZE main_domains.txt domain_chunk_
 
           # 3. Loop melalui setiap chunk file yang dihasilkan
           for chunk_file in domain_chunk_*; do
             
+            # Dapatkan domain tunggal dari chunk file
+            CURRENT_MAIN_DOMAIN=$(head -n 1 "$chunk_file" | xargs)
+            
+            # --- LOGIKA BARU: Ambil nama worker dari kata pertama domain (mis. blueivy dari blueivy.qzz.io) ---
+            DYNAMIC_WORKER_NAME=$(echo "$CURRENT_MAIN_DOMAIN" | cut -d. -f1)
+            
             echo "--------------------------------------------------------"
             echo "Memproses chunk file: $chunk_file"
+            echo "Domain Utama: $CURRENT_MAIN_DOMAIN"
+            echo "Nama Worker yang digunakan: $DYNAMIC_WORKER_NAME"
             
             # --- MULAI PEMBUATAN WRANGLER.TOML SEMENTARA ---
             
-            # Buat header wrangler.toml (selalu ditulis ulang)
-            echo "name = \"$WORKER_NAME\"" > wrangler.toml
+            # Buat header wrangler.toml (menggunakan Nama Worker Dinamis)
+            echo "name = \"$DYNAMIC_WORKER_NAME\"" > wrangler.toml
             echo "main = \"worker.js\"" >> wrangler.toml
             echo "compatibility_date = \"2024-01-15\"" >> wrangler.toml
             echo "compatibility_flags = [\"nodejs_compat\"]" >> wrangler.toml
@@ -111,13 +114,13 @@ jobs:
 
             # 4. DEPLOY menggunakan Wrangler CLI
             # Cloudflare API Token dan Account ID diakses melalui environment variables
-            echo "Mendeploy Worker untuk chunk $chunk_file..."
+            echo "Mendeploy Worker $DYNAMIC_WORKER_NAME..."
             npx wrangler deploy --config wrangler.toml
-            echo "Deployment chunk $chunk_file selesai."
+            echo "Deployment worker $DYNAMIC_WORKER_NAME selesai."
             
-            # --- SOLUSI BARU: Tambahkan delay 15 detik antar chunk untuk mitigasi timeout API yang agresif ---
-            echo "Menunggu 15 detik sebelum memproses chunk berikutnya..."
-            sleep 15 # Ditingkatkan dari 10s ke 15s
+            # --- Delay 20 detik antar deployment Worker untuk mitigasi timeout API ---
+            echo "Menunggu 20 detik sebelum memproses worker berikutnya..."
+            sleep 20
             
           done
           
